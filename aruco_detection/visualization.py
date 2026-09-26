@@ -73,16 +73,47 @@ def draw_stats(frame, fps, frame_ms, detect_ms, ssr_ms = None, use_ssr=False, de
     y = h - _LINE_H * len(lines) - 5
     for line in lines:
         y = _put(frame, line, y, CYAN)
-def draw_marker_center(frame, detections):
-    if not detections:
-            return
+
+def draw_debug_origins(frame, camera_matrix, detections):
+    h, w = frame.shape[:2]
+
+    # Image center
+    cx_img = w // 2
+    cy_img = h // 2
+
+    cv2.drawMarker(
+        frame,
+        (cx_img, cy_img),
+        (0, 0, 255),
+        cv2.MARKER_CROSS,
+        20,
+        2
+    )
+
+    # Calibration principal point
+    cx_cal = int(round(camera_matrix[0, 2]))
+    cy_cal = int(round(camera_matrix[1, 2]))
+    print("cx_cal", cx_cal )
+    print("cy_cal", cy_cal )
+    cv2.circle(
+        frame,
+        (cx_cal, cy_cal),
+        12,
+        (255, 225, 0),
+        -1
+    )
+
+    # Marker center
     for det in detections:
         corners = np.asarray(det.corners, dtype=np.float32).reshape(4, 2)
-    u_marker = int(np.mean(corners[:, 0]))
-    v_markers = int(np.mean(corners[:, 1]))
-    cv2.circle(frame, (u_marker, v_markers), 5, (0, 255, 255), -1)
-def draw_camera_center(frame):
-    h, w = frame.shape[:2]
-    cx = w//2
-    cy = h//2
-    cv2.drawMarker(frame,(cx, cy),(0, 0, 255),markerType=cv2.MARKER_CROSS,markerSize=20,thickness=2)
+
+        cx_marker = int(np.mean(corners[:, 0]))
+        cy_marker = int(np.mean(corners[:, 1]))
+
+        cv2.circle(
+            frame,
+            (cx_marker, cy_marker),
+            10,
+            (0, 255, 255),
+            -1
+        )

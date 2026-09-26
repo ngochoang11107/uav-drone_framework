@@ -41,9 +41,7 @@ class Aruco_Pose(Node):
         self.declare_parameter("publish_debug_image", True)
         self.declare_parameter("detector_type", "aruco")   # fractal  aruco
         self.declare_parameter("fractal_config", "FRACTAL_5L_6")
-        self.declare_parameter("calib_size", [1280,720])
-        self.detect_width = 854
-        self.detect_height = 480
+        self.declare_parameter("calib_size", [854,480])
         self.declare_parameter("threaded_capture", True)
         
         self.marker_size = self.get_parameter("marker_size").get_parameter_value().double_value
@@ -79,25 +77,9 @@ class Aruco_Pose(Node):
 
 
         self.camera_matrix, self.dist_coeffs = calibration.load_calibration(self.calib, self.side)
-        print("========== CALIB DEBUG ==========")
-        print("calib_size =", self.calib_size)
-        print("original K =")
+        print("===== CALIBRATION K =====")
         print(self.camera_matrix)
-
-        print("dist =")
-        print(self.dist_coeffs)
-
-        print("detect size =", self.detect_width, self.detect_height)
-        print("=================================")
-
-
-        self.camera_matrix_small = calibration.fit_camera_matrix(self.camera_matrix, self.calib_size, [self.detect_width, self.detect_height])
-        print("========== SMALL K ==========")
-        print(self.camera_matrix_small)
-        print("=============================")
-        # print("LOAD_CAMERA =", load_camera.__file__)
-        # print("matrix",self.camera_matrix)  
-        # print("dist_coeffs",self.dist_coeffs)
+        print("=========================")
         self.detector_type = str(self.detector_type).lower()
         if self.detector_type not in ("aruco", "fractal"):
             raise RuntimeError(
@@ -107,8 +89,6 @@ class Aruco_Pose(Node):
         target = self.target_id
         self.target_id = None if target < 0 else target
 
-
-
         dict_name = DEFAULT_DICT
         if self.detector_type == "aruco" and not hasattr(aruco, dict_name):
             raise RuntimeError(f"Unknown dictionary: {dict_name}")
@@ -117,7 +97,7 @@ class Aruco_Pose(Node):
 
         self.detector = detector.MakerDetector(dict_id = getattr(aruco, DEFAULT_DICT),
                                             marker_size = self.marker_size,
-                                            camera_matrix = self.camera_matrix_small,
+                                            camera_matrix = self.camera_matrix,
                                             dist_coeffs = self.dist_coeffs,
                                             detector_type=self.detector_type ,
                                             sigma = 100)
@@ -168,10 +148,9 @@ class Aruco_Pose(Node):
 
             with self.frame_lock:
                 self.latest_frame = frame
-
+                self.latest_stamp = msg.header.stamp
         except Exception as e:
             self.get_logger().error(f"CvBridge error: {e}")
-
 
     def timer_callback(self):
        # ok, hello = self.cam.read()
@@ -185,6 +164,7 @@ class Aruco_Pose(Node):
             if self.latest_frame is None:
                 return
             frame = self.latest_frame.copy()
+            stamp = self.latest_stamp
 
 
         # self.bridge = None
@@ -206,10 +186,6 @@ class Aruco_Pose(Node):
                 self._fps = 0.9 * self._fps + 0.1 * (1.0 / dt) if self._fps else 1.0 / dt
         self._last_cb = t0
 
-        # frame_small = cv2.resize(frame,(self.detect_width, self.detect_height),interpolation=cv2.INTER_AREA)
-
-        # gray_small = cv2.cvtColor(frame_small, cv2.COLOR_BGR2GRAY)
-
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
         t_detect0 = time.perf_counter()
@@ -229,8 +205,6 @@ class Aruco_Pose(Node):
     f"{self.detector.camera_matrix}"
 
 )
-        stamp = self.get_clock().now().to_msg()
-
         
 
         if detections:
@@ -262,7 +236,7 @@ class Aruco_Pose(Node):
         if frame_size != calib_size:
             self.get_logger().warn(f"Camera returns {frame_size[0]}x{frame_size[1]} instead of the "
                 f"calibrated {calib_size[0]}x{calib_size[1]}")
-            self.camera_matrix = calibration.fit_camera_matrix(self.camera_matrix,calib_size,frame_size)
+            # self.camera_matrix = calibration.fit_camera_matrix(self.camera_matrix,calib_size,frame_size)
         return frame_size
 
     
@@ -286,14 +260,12 @@ class Aruco_Pose(Node):
 
     def _publish_debug(self, stamp, frame, detections, t0, detect_ms):
 
-        viz.draw_markers(frame, detections)
-        viz.draw_marker_center(frame, detections)
-        viz.draw_camera_center(frame)
+
         y = 30
         if detections:
             for det in detections:
                 y = viz.draw_detection(frame, det, self.camera_matrix,
-                                       self.dist_coeffs, self.marker_size, y=y)
+                                        self.dist_coeffs, self.marker_size, y=y)
                 
         else:
             viz.draw_no_marker(frame, y)
@@ -301,13 +273,21 @@ class Aruco_Pose(Node):
         viz.draw_stats(frame, fps=self._fps, frame_ms=frame_ms,
                        detect_ms=detect_ms, detected=self.n_detected, total=self.n_frame)
 
-
+        viz.draw_markers(frame, detections)
+        viz.draw_debug_origins(frame, self.camera_matrix, detections)
 
 
         msg = self.bridge.cv2_to_imgmsg(frame, encoding="bgr8")
         msg.header.stamp = stamp
         msg.header.frame_id = self.frame_id #frame_id o day la 1 cai ten giup phan biet giua cac camera cua 1 drone 
         self.pub_image.publish(msg)
+
+        viz.draw_markers(frame, detections)
+        viz.draw_debug_origins(frame, self.camera_matrix, detections)
+
+        print("DEBUG IMAGE:", frame.shape)
+        print("DEBUG K:")
+        print(self.camera_matrix)
 
 
 def main(args=None):

@@ -144,11 +144,12 @@ class MarkerLocalizer(Node):
         # marker -> cam trong frd
         qw, qx, qy, qz = q_wxyz
         R_ned_from_frd = quat_to_rotmat(qx, qy, qz, qw)
-        p_marker_from_drone_ned = R_ned_from_frd @ p_frd        # marker nam o dau so voi drone theo he ned
-        p_drone_from_marker_ned = np.array([p_marker_from_drone_ned[0], p_marker_from_drone_ned[1], -p_marker_from_drone_ned[2]])      # drone nam o dau so voi marker theo he ned
+        p_marker_from_drone_ned = R_ned_from_frd @ p_frd # marker nam o dau so voi drone theo he ned
+        p_drone_from_marker_ned = - p_marker_from_drone_ned     # drone nam o dau so voi marker theo he ned
+        # p_drone_from_marker_ned = np.array([p_marker_from_drone_ned[0], p_marker_from_drone_ned[1], -p_marker_from_drone_ned[2]])
         marker_ned = drone_pos_ned + p_marker_from_drone_ned          # marker nam o dau trong world NED
 
-
+    
         print("========== DEBUG NED ==========")
         print("drone_pos_ned =", drone_pos_ned)
         print("p_frd         =", p_frd)
@@ -168,10 +169,11 @@ class MarkerLocalizer(Node):
 
         rel = PointStamped()
         rel.header = header_level
-        rel.point.x, rel.point.y, rel.point.z = map(float, p_drone_from_marker_ned)
+        # rel.point.x, rel.point.y, rel.point.z = map(float, p_drone_from_marker_ned)
+        rel.point.x, rel.point.y, rel.point.z = map(float, p_cam)
         self.pub_rel.publish(rel)
-        print("toi dayyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy")
-        print("toa do drone tuong doi so voi marker trong ned", p_drone_from_marker_ned)
+        # print("toi dayyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy")
+        # print("toa do drone tuong doi so voi marker trong ned", p_drone_from_marker_ned)
 
         out = PoseStamped()
         out.header.stamp = msg.header.stamp
@@ -179,19 +181,58 @@ class MarkerLocalizer(Node):
         out.pose.position.x, out.pose.position.y, out.pose.position.z = map(float, marker_ned)
 
         # out.pose.position.x = float(drone_pos_ned[0] + p_marker_from_drone_ned[0])
-        # out.pose.position.y = float(drone_pos[1] + p_marker_from_drone_ned[1])
-        # out.pose.position.z = float(drone_pos[2] + p_marker_from_drone_ned[2])
-        print("toa do marker trong ned")
+        # out.pose.position.y = float(drone_pos_ned[1] + p_marker_from_drone_ned[1])
+        # out.pose.position.z = float(drone_pos_ned[2] + p_marker_from_drone_ned[2])
+        # print("toa do marker trong ned")
 
         o = msg.pose.orientation
-        print("oooooo", o)
-        yaw = marker_yaw_ned(quat_to_rotmat(o.x, o.y, o.z, o.w), q_wxyz, self.extrinsic)
+        # print("oooooo", o)
+        yaw = marker_yaw_ned(quat_to_rotmat(o.x, o.y, o.z, o.w), qz)
         out.pose.orientation.z = math.sin(yaw/2.0)
         out.pose.orientation.w = math.cos(yaw/2.0)
 
         self.pub_pose.publish(out)      # pub_pose la toa do cua marker trong ned
         self.pub_height.publish(Float32(data=float(-p_marker_from_drone_ned[2])))
         self.pub_valid.publish(Bool(data=True))
+
+    # def on_marker_pose(self, msg):
+    #     t_capture = self.stamp_to_sec(msg.header.stamp)
+    #     sample = self._lookup(t_capture)
+    #     if sample is None:
+    #         self.pub_valid.publish(Bool(data=False))
+    #         return
+
+    #     _, q_wxyz, drone_pos_ned = sample   # chỉ cần q_wxyz, drone_pos_ned tạm bỏ qua
+
+    #     p_cam = np.array([msg.pose.position.x, msg.pose.position.y, msg.pose.position.z], dtype=float)
+    #     p_frd = self.extrinsic.to_body(p_cam)     # chỉ xoay cố định cam->frd, không có attitude
+
+    #     qw, qx, qy, qz = q_wxyz
+    #     yaw = math.atan2(2*(qw*qz + qx*qy), 1 - 2*(qy*qy + qz*qz))
+    #     c, s = math.cos(yaw), math.sin(yaw)
+    #     R_ned_from_yaw = np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]])
+
+    #     p_marker_from_drone_ned = R_ned_from_yaw @ p_frd    # marker so với cam/drone trong NED
+    #     p_drone_from_marker_ned = -p_marker_from_drone_ned
+
+    #     rel = PointStamped()
+    #     rel.header = msg.header
+    #     rel.header.frame_id = self.level_frame_id
+    #     rel.point.x, rel.point.y, rel.point.z = map(float, p_marker_from_drone_ned)
+    #     self.pub_rel.publish(rel)
+    #     self.pub_valid.publish(Bool(data=True))
+
+    #     # KHÔNG publish marker_ned (tuyệt đối) nữa cho tới khi drone_pos_ned đáng tin
+    #     # (quality != 0 và reset_counter đã được xử lý)
+
+    #     print("========== DEBUG NED ==========")
+    #     print("drone_pos_ned =", drone_pos_ned)
+    #     print("p_frd         =", p_frd)
+    #     print("p_marker_from_drone_ned     =", p_marker_from_drone_ned)
+    #     print("p_drone_from_marker_ned     =", p_drone_from_marker_ned)
+    #         # print("marker_ned    =", marker_ned)
+    #     print("p_cam =", p_cam)
+    #     print("===============================")
 
     def _check_marker_fresh(self):
         if self._last_marker is None:
